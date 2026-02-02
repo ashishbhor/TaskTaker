@@ -1,0 +1,5 @@
+{
+  "name": "TaskFlow Modern Dashboard",
+  "description": "A feature-rich task management dashboard with authentication, profile management, and CRUD functionality, featuring a clean, modern UI built with React and Tailwind CSS.",
+  "requestFramePermissions": []
+}
