@@ -1,7 +1,15 @@
-
+import { useAuth } from "./context/AuthContext";
 import React, { useState, useEffect, useMemo } from 'react';
 import confetti from 'canvas-confetti';
-import { api } from './services/mockServer';
+import { deleteTask as deleteTaskApi } from './services/taskService';
+import { login, signup, logout } from './services/authService';
+import { getProfile, updateMe } from './services/userService';
+import {
+  getTasks,
+  createTask,
+  updateTask,
+  deleteTask
+} from './services/taskService';
 import { User, Task, TaskPriority, TaskStatus } from './types';
 import { Button } from './components/Button';
 import { Input } from './components/Input';
@@ -62,9 +70,9 @@ const AuthView: React.FC<AuthViewProps> = ({ view, setView, authForm, setAuthFor
       <div className="relative z-10">
         <div className="flex items-center gap-4 text-white mb-20">
           <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center font-black text-xl">T</div>
-          <span className="text-2xl font-black tracking-tighter uppercase">TaskFlow</span>
+          <span className="text-2xl font-black tracking-tighter uppercase">TaskTaker</span>
         </div>
-        <h1 className="text-6xl font-black text-white leading-tight">Focus on what <br />matters.</h1>
+        <h1 className="text-6xl font-black text-white leading-tight">Unlock <br />your productivity superpowers.</h1>
         <p className="mt-6 text-indigo-100 text-lg max-w-md">The modern dashboard designed to eliminate noise and empower your workflow.</p>
       </div>
     </div>
@@ -90,14 +98,13 @@ const AuthView: React.FC<AuthViewProps> = ({ view, setView, authForm, setAuthFor
 );
 
 export default function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
-  const [user, setUser] = useState<User | null>(null);
+  const { user, loading, loginSuccess, logout } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [view, setView] = useState<'login' | 'signup' | 'dashboard' | 'profile'>('login');
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  
+
   const [searchQuery, setSearchQuery] = useState('');
   const [priorityFilter, setPriorityFilter] = useState<'ALL' | TaskPriority>('ALL');
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
@@ -107,26 +114,7 @@ export default function App() {
   const [authForm, setAuthForm] = useState({ email: '', password: '', fullName: '' });
   const [formError, setFormError] = useState('');
 
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('theme');
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
-      setIsDarkMode(true);
-      document.documentElement.classList.add('dark');
-    }
-    const init = async () => {
-      const response = await api.getMe();
-      if (response.success && response.data) {
-        setUser(response.data);
-        setIsAuthenticated(true);
-        setView('dashboard');
-        fetchTasks();
-      } else {
-        setIsAuthenticated(false);
-      }
-    };
-    init();
-  }, []);
+
 
   const toggleDarkMode = () => {
     setIsDarkMode(!isDarkMode);
@@ -140,81 +128,96 @@ export default function App() {
   };
 
   const fetchTasks = async () => {
-    const response = await api.getTasksList();
-    if (response.success && response.data) setTasks(response.data);
+    const data = await getTasks();
+    setTasks(data);
   };
+
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    setFormError('');
-    const res = view === 'signup' 
-      ? await api.register(authForm.email, authForm.fullName, authForm.password)
-      : await api.login(authForm.email, authForm.password);
-    
-    if (res.success && res.data) {
-      const userData = 'user' in res.data ? res.data.user : (res.data as unknown as User);
-      setUser(userData);
-      setIsAuthenticated(true);
-      setView('dashboard');
-      fetchTasks();
-    } else {
-      setFormError(res.message || 'Error');
+    setFormError("");
+
+    try {
+      if (view === "signup") {
+        await signup(authForm.fullName, authForm.email, authForm.password);
+        setView("login");
+      } else {
+        await login(authForm.email, authForm.password);
+        await loginSuccess(); // 🔥 key line
+        setView("dashboard");
+        fetchTasks();
+      }
+    } catch (err: any) {
+      setFormError(err.message);
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
-  const handleLogout = async () => {
-    await api.logout();
-    setIsAuthenticated(false);
-    setUser(null);
+  const handleLogout = () => {
+    logout(); // from AuthContext
     setTasks([]);
-    setView('login');
+    setView("login");
     setIsSidebarOpen(false);
   };
 
   const handleTaskSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    const res = editingTask 
-      ? await api.updateTask(editingTask.id, taskForm)
-      : await api.createTask(taskForm.title, taskForm.description, taskForm.priority);
-    
-    if (res.success) {
-      fetchTasks();
+
+    try {
+      if (editingTask) {
+        await updateTask(editingTask._id, taskForm);
+      } else {
+        await createTask(taskForm);
+      }
+
+      await fetchTasks();
       setIsTaskModalOpen(false);
       setEditingTask(null);
       setTaskForm({ title: '', description: '', priority: TaskPriority.MEDIUM });
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   const toggleTaskStatus = async (task: Task) => {
-    const nextStatus = task.status === TaskStatus.DONE ? TaskStatus.TODO : TaskStatus.DONE;
-    const res = await api.updateTask(task.id, { status: nextStatus });
-    if (res.success) {
-      fetchTasks();
-      if (nextStatus === TaskStatus.DONE) confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+    const nextStatus =
+      task.status === TaskStatus.DONE
+        ? TaskStatus.TODO
+        : TaskStatus.DONE;
+
+    await updateTask(task._id, { status: nextStatus });
+    await fetchTasks();
+
+    if (nextStatus === TaskStatus.DONE) {
+      confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
     }
   };
 
   const deleteTask = async (id: string) => {
     if (confirm('Delete task?')) {
-      const res = await api.deleteTask(id);
-      if (res.success) fetchTasks();
+      await deleteTaskApi(id);
+      await fetchTasks();
     }
   };
+
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    const res = await api.updateMe(profileName);
-    if (res.success && res.data) {
-      setUser(res.data);
+
+    try {
+      const updatedUser = await updateMe(profileName);
+      loginSuccess(); // from AuthContext
       alert('Profile updated!');
+      setView('dashboard');
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
+
 
   const filteredTasks = useMemo(() => {
     return tasks.filter(t => {
@@ -231,17 +234,29 @@ export default function App() {
     high: tasks.filter(t => t.priority === TaskPriority.HIGH).length
   }), [tasks]);
 
-  if (isAuthenticated === null) return <LoadingScreen />;
+  if (loading) return <LoadingScreen />;
 
-  if (!isAuthenticated) return <AuthView view={view as 'login' | 'signup'} setView={setView} authForm={authForm} setAuthForm={setAuthForm} formError={formError} isLoading={isLoading} onAuth={handleAuth} />;
+  if (!user) {
+    return (
+      <AuthView
+        view={view as "login" | "signup"}
+        setView={setView}
+        authForm={authForm}
+        setAuthForm={setAuthForm}
+        formError={formError}
+        isLoading={isLoading}
+        onAuth={handleAuth}
+      />
+    );
+  }
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full p-6">
       <div className="flex items-center gap-3 mb-10">
         <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-black text-xl shadow-lg shadow-indigo-600/20">T</div>
-        <span className="text-xl font-black tracking-tighter text-slate-900 dark:text-white uppercase">TaskFlow</span>
+        <span className="text-xl font-black tracking-tighter text-slate-900 dark:text-white uppercase">TaskTaker</span>
       </div>
-      
+
       <nav className="flex-1 space-y-2">
         <button onClick={() => { setView('dashboard'); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-4 px-5 py-3 rounded-2xl transition-all ${view === 'dashboard' ? 'bg-indigo-600 text-white shadow-md font-bold' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 6h16M4 12h16M4 18h16"></path></svg> Dashboard
@@ -312,7 +327,7 @@ export default function App() {
             </button>
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-black text-sm">T</div>
-              <span className="font-black text-slate-900 dark:text-white uppercase text-sm tracking-tighter">TaskFlow</span>
+              <span className="font-black text-slate-900 dark:text-white uppercase text-sm tracking-tighter">TaskTaker</span>
             </div>
           </div>
         </header>
@@ -356,12 +371,12 @@ export default function App() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 pb-20">
                   {filteredTasks.map(task => (
-                    <div key={task.id} className={`group bg-white dark:bg-slate-900 p-6 md:p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 transition-all hover:shadow-xl ${task.status === TaskStatus.DONE ? 'opacity-70' : ''}`}>
+                    <div key={task._id} className={`group bg-white dark:bg-slate-900 p-6 md:p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 transition-all hover:shadow-xl ${task.status === TaskStatus.DONE ? 'opacity-70' : ''}`}>
                       <div className="flex items-start justify-between mb-4 md:mb-6">
                         <Badge color={task.priority === TaskPriority.HIGH ? 'red' : task.priority === TaskPriority.MEDIUM ? 'yellow' : 'blue'}>{task.priority}</Badge>
                         <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button onClick={() => { setEditingTask(task); setTaskForm({ title: task.title, description: task.description, priority: task.priority }); setIsTaskModalOpen(true); }} className="p-2 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/40 rounded-xl hover:bg-indigo-600 hover:text-white transition-all"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg></button>
-                          <button onClick={() => deleteTask(task.id)} className="p-2 text-rose-600 bg-rose-50 dark:bg-rose-900/40 rounded-xl hover:bg-rose-600 hover:text-white transition-all"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
+                          <button onClick={() => deleteTask(task._id)} className="p-2 text-rose-600 bg-rose-50 dark:bg-rose-900/40 rounded-xl hover:bg-rose-600 hover:text-white transition-all"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
                         </div>
                       </div>
                       <h3 className={`text-xl font-black text-slate-900 dark:text-white mb-2 leading-tight ${task.status === TaskStatus.DONE ? 'line-through text-slate-400' : ''}`}>{task.title}</h3>
@@ -400,7 +415,7 @@ export default function App() {
       {isTaskModalOpen && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[120] flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl border border-slate-200/50 dark:border-slate-800 flex flex-col relative animate-slide-up shadow-2xl overflow-hidden">
-            
+
             {/* Modal Header */}
             <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -411,34 +426,34 @@ export default function App() {
                   {editingTask ? 'Edit Mission' : 'New Mission'}
                 </h3>
               </div>
-              <button 
-                onClick={() => { setIsTaskModalOpen(false); setEditingTask(null); }} 
+              <button
+                onClick={() => { setIsTaskModalOpen(false); setEditingTask(null); }}
                 className="text-slate-400 hover:text-indigo-600 hover:bg-slate-50 dark:hover:bg-slate-800 p-1.5 rounded-xl transition-all"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M6 18L18 6M6 6l12 12"></path></svg>
               </button>
             </div>
-            
+
             {/* Modal Form */}
             <form onSubmit={handleTaskSubmit} id="task-form" className="p-6 md:p-8 space-y-6 overflow-y-auto max-h-[80vh]">
               <div className="space-y-4">
-                <Input 
-                  label="Mission Title" 
-                  required 
-                  autoFocus 
-                  placeholder="Task name..." 
-                  value={taskForm.title} 
-                  onChange={e => setTaskForm({ ...taskForm, title: e.target.value })} 
-                  className="font-bold border-slate-100 dark:border-slate-800" 
+                <Input
+                  label="Mission Title"
+                  required
+                  autoFocus
+                  placeholder="Task name..."
+                  value={taskForm.title}
+                  onChange={e => setTaskForm({ ...taskForm, title: e.target.value })}
+                  className="font-bold border-slate-100 dark:border-slate-800"
                 />
-                
+
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 ml-1 uppercase tracking-[0.2em]">Context Brief</label>
-                  <textarea 
-                    className="w-full px-5 py-4 rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 dark:text-white outline-none focus:ring-4 focus:ring-indigo-500/10 min-h-[90px] font-medium transition-all text-sm resize-none placeholder-slate-300 dark:placeholder-slate-600" 
-                    placeholder="Brief details or mission notes..." 
-                    value={taskForm.description} 
-                    onChange={e => setTaskForm({ ...taskForm, description: e.target.value })} 
+                  <textarea
+                    className="w-full px-5 py-4 rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 dark:text-white outline-none focus:ring-4 focus:ring-indigo-500/10 min-h-[90px] font-medium transition-all text-sm resize-none placeholder-slate-300 dark:placeholder-slate-600"
+                    placeholder="Brief details or mission notes..."
+                    value={taskForm.description}
+                    onChange={e => setTaskForm({ ...taskForm, description: e.target.value })}
                   />
                 </div>
 
@@ -446,15 +461,14 @@ export default function App() {
                   <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 ml-1 uppercase tracking-[0.2em]">Priority Matrix</label>
                   <div className="grid grid-cols-3 gap-2 p-1 bg-slate-50 dark:bg-slate-800/50 rounded-2xl">
                     {[TaskPriority.LOW, TaskPriority.MEDIUM, TaskPriority.HIGH].map(p => (
-                      <button 
-                        key={p} 
-                        type="button" 
-                        onClick={() => setTaskForm({ ...taskForm, priority: p })} 
-                        className={`py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${
-                          taskForm.priority === p 
-                          ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-white shadow-sm ring-1 ring-slate-200 dark:ring-slate-600 scale-[1.02]' 
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setTaskForm({ ...taskForm, priority: p })}
+                        className={`py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${taskForm.priority === p
+                          ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-white shadow-sm ring-1 ring-slate-200 dark:ring-slate-600 scale-[1.02]'
                           : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
-                        }`}
+                          }`}
                       >
                         {p}
                       </button>
@@ -465,17 +479,17 @@ export default function App() {
 
               {/* Action Buttons */}
               <div className="pt-2 flex flex-col sm:flex-row gap-3">
-                <Button 
-                  type="submit" 
-                  isLoading={isLoading} 
+                <Button
+                  type="submit"
+                  isLoading={isLoading}
                   className="w-full sm:flex-1 font-black px-8 py-3.5 order-1 shadow-indigo-600/20"
                 >
                   {editingTask ? 'Apply Changes' : 'Confirm Launch'}
                 </Button>
-                <Button 
-                  variant="ghost" 
-                  type="button" 
-                  onClick={() => { setIsTaskModalOpen(false); setEditingTask(null); }} 
+                <Button
+                  variant="ghost"
+                  type="button"
+                  onClick={() => { setIsTaskModalOpen(false); setEditingTask(null); }}
                   className="w-full sm:w-auto font-bold py-3.5 order-2 text-slate-400 dark:text-slate-500"
                 >
                   Cancel
