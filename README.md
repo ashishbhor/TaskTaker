@@ -40,8 +40,8 @@ TaskTaker is a full-stack web application that allows users to securely manage t
 ### Backend (`backend/.env`)
 ```env
 PORT=5000
-MONGO_URI=your_mongodb_atlas_connection_string
-JWT_SECRET=your_jwt_secret
+MONGO_URI=mongodb://tasktakervb_user:Vikas%402004@ac-mppsjy6-shard-00-00.wtqn7gh.mongodb.net:27017,ac-mppsjy6-shard-00-01.wtqn7gh.mongodb.net:27017,ac-mppsjy6-shard-00-02.wtqn7gh.mongodb.net:27017/tasktaker?ssl=true&authSource=admin&retryWrites=true&w=majority
+JWT_SECRET=supersecretkey123
 ```
 
 ### Frontend
