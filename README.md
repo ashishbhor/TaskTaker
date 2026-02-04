@@ -104,6 +104,10 @@ Code structured for easy scaling
 /postman/tasktaker-api.json
 
 “How would scale this for production?”
-For production scaling, I would deploy the backend using containerization (Docker) and place it behind a load balancer. Environment variables would be managed via secret managers. MongoDB indexes would be added on frequently queried fields. Caching (Redis) could be introduced for task lists and profile data. API rate limiting and request validation would improve security. CI/CD pipelines would automate testing and deployments. Monitoring and logging would be added using tools like Prometheus and Grafana.
+To scale this application for production, I would use Docker for containerization and a CI/CD pipeline for automated deployments.
+I would introduce Redis caching for frequently accessed data, add database indexing on userId and task fields, and enable rate-limiting for APIs.
+Environment variables would be managed securely using cloud secrets.
+CORS rules would be restricted per environment, and logging would be centralized using tools like Winston or Datadog.
+Finally, I’d add monitoring, health checks, and horizontal scaling for the backend services.
 
 
