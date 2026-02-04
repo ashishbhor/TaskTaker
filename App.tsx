@@ -16,6 +16,7 @@ import { Input } from './components/Input';
 
 // --- Sub-components (Stateless / Pure) ---
 
+
 const LoadingScreen = () => (
   <div className="fixed inset-0 bg-white dark:bg-slate-950 flex flex-col items-center justify-center z-[100]">
     <div className="relative">
@@ -101,6 +102,9 @@ export default function App() {
   const { user, loading, loginSuccess, logout } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [sort, setSort] = useState("newest");
   const [view, setView] = useState<'login' | 'signup' | 'dashboard' | 'profile'>('login');
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -113,6 +117,31 @@ export default function App() {
   const [profileName, setProfileName] = useState('');
   const [authForm, setAuthForm] = useState({ email: '', password: '', fullName: '' });
   const [formError, setFormError] = useState('');
+
+  useEffect(() => {
+    if (!user) return;
+
+    setView("dashboard");
+    fetchTasks();
+  }, [user]);
+
+  useEffect(() => {
+    if (view === "profile" && user) {
+      setProfileName(user.fullName);
+    }
+  }, [view, user]);
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem("theme");
+
+    if (savedTheme === "dark") {
+      document.documentElement.classList.add("dark");
+      setIsDarkMode(true);
+    } else {
+      document.documentElement.classList.remove("dark");
+      setIsDarkMode(false);
+    }
+  }, []);
 
 
 
@@ -128,10 +157,10 @@ export default function App() {
   };
 
   const fetchTasks = async () => {
-    const data = await getTasks();
-    setTasks(data);
+    const data = await getTasks(page, 5, sort);
+    setTasks(data.tasks);
+    setTotalPages(data.totalPages);
   };
-
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -161,6 +190,7 @@ export default function App() {
     setView("login");
     setIsSidebarOpen(false);
   };
+
 
   const handleTaskSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -203,7 +233,6 @@ export default function App() {
     }
   };
 
-
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -235,7 +264,6 @@ export default function App() {
   }), [tasks]);
 
   if (loading) return <LoadingScreen />;
-
   if (!user) {
     return (
       <AuthView
@@ -361,6 +389,18 @@ export default function App() {
                     <svg className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
                     <input type="text" placeholder="Search tasks..." className="w-full pl-12 pr-5 py-3 bg-slate-50 dark:bg-slate-800 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold transition-all text-sm" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
                   </div>
+                  <select
+                    value={sort}
+                    onChange={(e) => {
+                      setSort(e.target.value);
+                      setPage(1);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 font-bold"
+                  >
+                    <option value="newest">Newest First</option>
+                    <option value="oldest">Oldest First</option>
+                    <option value="priority">Priority</option>
+                  </select>
                   <select className="px-5 py-3 bg-slate-50 dark:bg-slate-800 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500/20 font-black text-sm transition-all" value={priorityFilter} onChange={e => setPriorityFilter(e.target.value as any)}>
                     <option value="ALL">All Priorities</option>
                     <option value={TaskPriority.HIGH}>High</option>
@@ -368,6 +408,7 @@ export default function App() {
                     <option value={TaskPriority.LOW}>Low</option>
                   </select>
                 </div>
+
 
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 pb-20">
                   {filteredTasks.map(task => (

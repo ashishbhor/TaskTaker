@@ -28,6 +28,7 @@ export interface Task {
   priority: TaskPriority;
   createdAt: string;
   updatedAt: string;
+  dueDate?: string;
 }
 
 export interface AuthResponse {

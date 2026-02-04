@@ -1,23 +1,16 @@
-import API_BASE_URL from "./api";
-import { authHeader } from "./authHeader";
 import { apiFetch } from "./api";
+import { authHeader } from "./authHeader";
 
-export async function getProfile() {
-    return apiFetch(`${API_BASE_URL}/me`, {
-        headers: {
-            "Content-Type": "application/json",
-            ...authHeader(),
-        },
+export function getProfile() {
+    return apiFetch("/me", {
+        headers: authHeader(),
     });
 }
 
-export async function updateMe(fullName: string) {
-    return apiFetch(`${API_BASE_URL}/me`, {
+export function updateMe(fullName: string) {
+    return apiFetch("/me", {
         method: "PUT",
-        headers: {
-            "Content-Type": "application/json",
-            ...authHeader(),
-        },
+        headers: authHeader(),
         body: JSON.stringify({ fullName }),
     });
 }
