@@ -1,9 +1,15 @@
 const Task = require("../models/Task");
 
 exports.createTask = async (req, res) => {
-    const task = await Task.create({ ...req.body, user: req.user.id });
+    const task = await Task.create({
+        title: req.body.title,
+        description: req.body.description,
+        priority: req.body.priority,
+        user: req.user.id
+    });
     res.status(201).json(task);
 };
+
 
 exports.getTasks = async (req, res) => {
     const page = Number(req.query.page) || 1;
@@ -34,15 +40,30 @@ exports.getTasks = async (req, res) => {
 
 
 exports.updateTask = async (req, res) => {
-    const task = await Task.findByIdAndUpdate(
-        req.params.id,
+    const task = await Task.findOneAndUpdate(
+        { _id: req.params.id, user: req.user.id },
         req.body,
         { new: true }
     );
+
+    if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+    }
+
     res.json(task);
 };
 
+
 exports.deleteTask = async (req, res) => {
-    await Task.findByIdAndDelete(req.params.id);
+    const task = await Task.findOneAndDelete({
+        _id: req.params.id,
+        user: req.user.id
+    });
+
+    if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+    }
+
     res.json({ message: "Task deleted" });
 };
+
