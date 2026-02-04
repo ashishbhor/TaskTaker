@@ -41,10 +41,11 @@ TaskTaker is a full-stack web application that allows users to securely manage t
 ```env
 PORT=5000
 MONGO_URI=your_mongodb_atlas_connection_string
-JWT_SECRET=your_jwt_secret```
+JWT_SECRET=your_jwt_secret
+```
 
 ### Frontend
-VITE_API_URL=https://tasktaker-y1v.onrender.com/api/v1
+```VITE_API_URL=https://tasktaker-y1v.onrender.com/api/v1```
 
 ▶️ How to Run Locally
 
