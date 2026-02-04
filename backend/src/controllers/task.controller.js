@@ -1,15 +1,21 @@
 const Task = require("../models/Task");
 
 exports.createTask = async (req, res) => {
+    const { title, description, priority } = req.body;
+
+    if (!title) {
+        return res.status(400).json({ message: "Title is required" });
+    }
+
     const task = await Task.create({
-        title: req.body.title,
-        description: req.body.description,
-        priority: req.body.priority,
-        user: req.user.id
+        title,
+        description,
+        priority,
+        user: req.user.id,
     });
+
     res.status(201).json(task);
 };
-
 
 exports.getTasks = async (req, res) => {
     const page = Number(req.query.page) || 1;
